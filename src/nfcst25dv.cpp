@@ -9,19 +9,13 @@
 /* Libraries */
 
 #include "nfcst25dv.h"
-//#include "hal_functions.h"
-
-#if defined(ARDUINO) // Arduino Framework
-    #include "Arduino.h"
-#endif
 
 /*************************************************************************************************/
 
 /* HALs */
 
 #if defined(ARDUINO) // Arduino Framework
-    #define _DEFAULT_GPIO_SDA (SDA)
-    #define _DEFAULT_GPIO_SCL (SCL)
+    #include "Arduino.h"
 
     #define _LOW (LOW)
     #define _HIGH (HIGH)
@@ -38,15 +32,8 @@
     #define _digitalWrite(x, y) do { digitalWrite(x, y); } while(0)
     #define _digitalRead(x) (digitalRead(x))
 
-    #define _millis() millis()
     #define _delay(x) delay(x)
-    #define _yield() yield()
-
-    #define _i2c_begin(x, y, z) do { Wire.begin(x, y, z); } while(0)
 #elif defined(ESP_IDF) // ESP32 ESPIDF Framework
-    #define _DEFAULT_GPIO_SDA (21)
-    #define _DEFAULT_GPIO_SCL (22)
-
     #define _LOW (0)
     #define _HIGH (1)
     #define _OUTPUT (GPIO_MODE_OUTPUT)
@@ -71,14 +58,10 @@
     #define _digitalWrite(x, y) do { gpio_set_level((gpio_num_t)x, y); } while(0)
     #define _digitalRead(x) (gpio_get_level((gpio_num_t)x))
 
-    #define _millis() (esp_timer_get_time()/1000)
     #define _delay(x) do { vTaskDelay(x/portTICK_PERIOD_MS); } while(0)
-    #define _yield() do { taskYIELD(); } while(0)
 
-    #define _i2c_begin(x, y, z) do { Wire.begin(x, y, z); } while(0)
-#elif defined(SAMD20) // SAMD20 ASF Framework
-    #define _DEFAULT_GPIO_SDA (PINMUX_PA08C_SERCOM0_PAD0)
-    #define _DEFAULT_GPIO_SCL (PINMUX_PA09C_SERCOM0_PAD1)
+#elif defined(SAMD20_ASF) || defined(SAML21_ASF) // SAM0 ASF Framework
+    #include "asf.h"
 
     #define _LOW false
     #define _HIGH true
@@ -99,12 +82,12 @@
             config_port_pin.direction = PORT_PIN_DIR_OUTPUT; \
         else if(y == _INPUT) \
             config_port_pin.direction  = PORT_PIN_DIR_INPUT; \
-        else if(y == _INPUT_PULLUP) \
+        else if(y == (port_pin_dir)(_INPUT_PULLUP)) \
         { \
             config_port_pin.direction  = PORT_PIN_DIR_INPUT; \
             config_port_pin.input_pull = PORT_PIN_PULL_UP; \
         } \
-        else if(y == _INPUT_PULLDOWN) \
+        else if(y == (port_pin_dir)(_INPUT_PULLDOWN)) \
         { \
             config_port_pin.direction  = PORT_PIN_DIR_INPUT; \
             config_port_pin.input_pull = PORT_PIN_PULL_DOWN; \
@@ -114,24 +97,14 @@
     #define _digitalWrite(x, y) do { port_pin_set_output_level(x, y); } while(0)
     #define _digitalRead(x) (port_pin_get_output_level(x))
 
-    #define _millis() (systickCount) // External global systickCount variable must exists 
+    extern volatile uint32_t systickCount;
     #define _delay(x) do \
     { \
         uint32_t t0 = systickCount; \
-        while( (systickCount - t0)  <= ms) \
-            wdt_reset_count();
+        while((systickCount - t0)  <= x) \
+            wdt_reset_count(); \
         \
     } while(0)
-    #define _yield() wdt_reset_count();
-
-    #define _i2c_begin(a, x, y, z) do \ // a == global i2c_master_module element
-    { \
-        struct i2c_master_config config_i2c_master; \
-        i2c_master_get_config_defaults(&config_i2c_master); \
-        config_i2c_master.buffer_timeout = 10000; \
-        i2c_master_init(&a, SERCOM2, &config_i2c_master); \
-        i2c_master_enable(&a); \
-    } while (0)
 #else
     #define _DEFAULT_GPIO_SDA (-1)
     #define _DEFAULT_GPIO_SCL (-1)
@@ -350,7 +323,8 @@ int32_t NFCST25DV::read_tag_uid(ST25DV_UID* const uid)
 uint32_t NFCST25DV::read_tag_size(void)
 {
     ST25DV_MEM_SIZE mem_size;
-    ST25DV_ReadMemSize(&_std25dv_element, &mem_size);
+    if(ST25DV_ReadMemSize(&_std25dv_element, &mem_size) != NFCTAG_OK)
+        return 0;
     return ((mem_size.BlockSize+1) * (mem_size.Mem_Size+1));
 }
 
@@ -1104,11 +1078,189 @@ int32_t NFCST25DV::reset_mailbox_en_dyn(void)
 }
 
 /**
-  * @brief  Reads the Mailbox message length dynamic register.
+  * @brief  Reads the number of bytes currently available in FTM Mailbox.
   * @param  ptr_mb_length Pointer on a uint8_t used to return the Mailbox message length.
   * @return int32_t enum status.
   */
 int32_t NFCST25DV::read_mailbox_length_dyn(uint8_t* const ptr_mb_length)
 {
-    return ST25DV_ReadMBLength_Dyn(&_std25dv_element, ptr_mb_length);
+    int32_t rc = ST25DV_ReadMBLength_Dyn(&_std25dv_element, ptr_mb_length);
+    if(rc == NFCTAG_OK)
+        *ptr_mb_length = *ptr_mb_length + 1;
+    return rc;
+}
+
+/**
+  * @brief  Open I2C Security Session to allow static system config registers modification.
+  * @param  passwd_msb ST25DV 64 bits password MSB to open I2C Security Session.
+  * @param  passwd_lsb ST25DV 64 bits password LSB to open I2C Security Session.
+  * @return int32_t enum status.
+  */
+int32_t NFCST25DV::open_i2c_security_session(const uint32_t passwd_msb,const uint32_t passwd_lsb)
+{
+    int32_t rc = NFCTAG_OK;
+    ST25DV_PASSWD password;
+    ST25DV_I2CSSO_STATUS i2c_session_status;
+
+    // Check if I2C Security Session is already open
+    rc = read_i2c_security_session_dyn(&i2c_session_status);
+    if(rc == NFCTAG_OK)
+    {
+        if(i2c_session_status == ST25DV_SESSION_OPEN)
+        {
+            _println("[NFCST25DV] Info: Security Session already open.");
+            return NFCTAG_OK;
+        }
+    }
+
+    // If session is not open, present Password to open it
+    password.LsbPasswd = passwd_lsb;
+    password.MsbPasswd = passwd_msb;
+    rc = present_i2c_password(password);
+    if(rc != NFCTAG_OK)
+    {
+        _println("[NFCST25DV] Error: Can't present I2C Password to open Security Session.");
+        return rc;
+    }
+
+    // Check open result
+    rc = read_i2c_security_session_dyn(&i2c_session_status);
+    if(rc != NFCTAG_OK)
+    {
+        _println("[NFCST25DV] Error: Can't read I2C Security Session status.");
+        return rc;
+    }
+    if(i2c_session_status != ST25DV_SESSION_OPEN)
+        return NFCTAG_ERROR;
+
+    return NFCTAG_OK;
+}
+
+/**
+  * @brief  Close I2C Security Session.
+  * @return int32_t enum status.
+  */
+int32_t NFCST25DV::close_i2c_security_session(void)
+{
+    int32_t rc = NFCTAG_OK;
+    ST25DV_PASSWD password;
+    ST25DV_I2CSSO_STATUS i2c_session_status;
+
+    // Check if I2C Security Session is already open
+    rc = read_i2c_security_session_dyn(&i2c_session_status);
+    if(rc == NFCTAG_OK)
+    {
+        if(i2c_session_status == ST25DV_SESSION_CLOSED)
+        {
+            _println("[NFCST25DV] Info: Security Session already closed.");
+            return NFCTAG_OK;
+        }
+    }
+
+    // Present an invalid Password to force close it without POR
+    password.LsbPasswd = RESERVED_PASSWD;
+    password.MsbPasswd = RESERVED_PASSWD;
+    if(present_i2c_password(password) != NFCTAG_OK)
+    {
+        _println("[NFCST25DV] Error: Can't present I2C Password to close Security Session.");
+        return NFCTAG_ERROR;
+    }
+
+    // Check close result
+    rc = read_i2c_security_session_dyn(&i2c_session_status);
+    if(rc != NFCTAG_OK)
+    {
+        _println("[NFCST25DV] Warning: Can't read if I2C Security Session is closed.");
+        return NFCTAG_ERROR;
+    }
+    if(i2c_session_status != ST25DV_SESSION_CLOSED)
+        return NFCTAG_ERROR;
+    return NFCTAG_OK;
+}
+
+/**
+  * @brief  Authorize Fast Transfer Mode usage (set MB_MODE).
+  * @param  lock_status Lock or unlock FTM (0 - lock; 1 - unlock).
+  * @return int32_t enum status.
+  */
+int32_t NFCST25DV::ftm_lock_unlock_use(const ST25DV_EN_STATUS lock_status)
+{
+    ST25DV_EN_STATUS mb_mode_status;
+
+    // Check MB_MODE Register enable/disable status
+    if(read_mailbox_mode(&mb_mode_status) != NFCTAG_OK)
+    {
+        _println("[NFCST25DV] Error: Can't Read mb_mode Register.");
+        return NFCTAG_ERROR;
+    }
+
+    // Check if it is already locked/unlocked
+    if(mb_mode_status == lock_status)
+    {
+        if(lock_status == ST25DV_ENABLE)
+            _println("[NFCST25DV] Info: FTM already unlocked.");
+        else
+            _println("[NFCST25DV] Info: FTM already locked.");
+        return NFCTAG_OK;
+    }
+
+    // Enable MB_MODE Register
+    return write_mailbox_mode(lock_status);
+}
+
+/**
+  * @brief  Enable/Disable Fast Transfer Mode (set MB_EN).
+  * @param  enable Enable or disable (0 - Disable; 1 - Enable).
+  * @return int32_t enum status.
+  */
+int32_t NFCST25DV::ftm_enable_disable(const uint8_t enable)
+{
+    if(enable)
+        return set_mailbox_en_dyn();
+    else
+        return reset_mailbox_en_dyn();
+}
+
+/**
+  * @brief  Disable Fast Transfer Mode (set MB_EN).
+  * @return int32_t enum status.
+  */
+int32_t NFCST25DV::ftm_disable(void)
+{
+    //if(ftm_status() == ST25DV_DISABLE)
+    //{
+    //    _println("FTM already disabled.");
+    //    return NFCTAG_OK;
+    //}
+    return ftm_enable_disable(0);
+}
+
+/**
+  * @brief  Enable Fast Transfer Mode (set MB_EN).
+  * @return int32_t enum status.
+  */
+int32_t NFCST25DV::ftm_enable(void)
+{
+    //if(ftm_status() == ST25DV_ENABLE)
+    //{
+    //    _println("FTM already enabled.");
+    //    return NFCTAG_OK;
+    //}
+    return ftm_enable_disable(1);
+}
+
+/**
+  * @brief  Check if Fast Transfer Mode is enabled or disabled (get MB_EN).
+  * @return int32_t enum status.
+  */
+int32_t NFCST25DV::ftm_status(void)
+{
+    ST25DV_EN_STATUS ftm_status;
+
+    if(get_mailbox_en_dyn(&ftm_status) != NFCTAG_OK)
+    {
+        _println("[NFCST25DV] Error: Can't Read mb_en Register.");
+        return NFCTAG_ERROR;
+    }
+    return ftm_status;
 }

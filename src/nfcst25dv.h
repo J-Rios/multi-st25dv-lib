@@ -31,6 +31,21 @@ extern "C" {
 // Uninitialized elements value
 const int8_t UNINITIALIZE = -1;
 
+// Fast Transferr Mode Mailbox Buffer Size
+const uint16_t ST25DV_FTM_MB_SIZE = 256;
+
+// Reserved password value for close I2C Security Session
+const uint32_t RESERVED_PASSWD = 0xFFFFFFFF;
+
+// ST Product Code (Tag Factory UID register byte 5)
+// Note that IC Ref register value is not the same
+const uint8_t ST25DV04K_IE = 0x24; // ST25DVxxx-IE (Open Drain)
+const uint8_t ST25DV16K_IE = 0x26; // ST25DVxxx-IE (Open Drain)
+const uint8_t ST25DV64K_IE = 0x26; // ST25DVxxx-IE (Open Drain)
+const uint8_t ST25DV04K_JF = 0x25; // ST25DVxxx-JF (CMOS)
+const uint8_t ST25DV16K_JF = 0x27; // ST25DVxxx-JF (CMOS)
+const uint8_t ST25DV64K_JF = 0x27; // ST25DVxxx-JF (CMOS)
+
 /*************************************************************************************************/
 
 class NFCST25DV
@@ -125,6 +140,13 @@ class NFCST25DV
         int32_t set_mailbox_en_dyn(void);
         int32_t reset_mailbox_en_dyn(void);
         int32_t read_mailbox_length_dyn(uint8_t* const ptr_mb_length);
+        int32_t open_i2c_security_session(const uint32_t passwd_msb,const uint32_t passwd_lsb);
+        int32_t close_i2c_security_session(void);
+        int32_t ftm_lock_unlock_use(const ST25DV_EN_STATUS lock_status);
+        int32_t ftm_enable_disable(const uint8_t enable);
+        int32_t ftm_disable(void);
+        int32_t ftm_enable(void);
+        int32_t ftm_status(void);
 
     private:
         int8_t _gpio_eh, _gpio_gpo, _gpio_lpd;

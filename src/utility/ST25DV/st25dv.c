@@ -57,6 +57,7 @@
 static int32_t ReadRegWrap(void *Handle, uint16_t Reg, uint8_t *pData, uint16_t Length);
 static int32_t WriteRegWrap(void *Handle, uint16_t Reg, const uint8_t *pData, uint16_t Length);
 
+#if 0
 int32_t ST25DV_Init( ST25DV_Object_t* );
 int32_t ST25DV_ReadID(ST25DV_Object_t* pObj,  uint8_t * const pICRef );
 int32_t ST25DV_ReadICRev(ST25DV_Object_t* pObj,  uint8_t * const pICRev );
@@ -133,6 +134,7 @@ int32_t ST25DV_GetMBEN_Dyn( ST25DV_Object_t* pObj, ST25DV_EN_STATUS * const pMBE
 int32_t ST25DV_SetMBEN_Dyn( ST25DV_Object_t* pObj );
 int32_t ST25DV_ResetMBEN_Dyn( ST25DV_Object_t* pObj );
 int32_t ST25DV_ReadMBLength_Dyn( ST25DV_Object_t* pObj, uint8_t * const pMBLength );
+#endif
 
 /* Global variables ---------------------------------------------------------*/
 /**
@@ -502,12 +504,10 @@ int32_t ST25DV_ReadUID(ST25DV_Object_t* pObj,  ST25DV_UID * const pUid )
   
   /* Store information in 2 WORD */
   pUid->MsbUid = 0;
-  
   for( i = 0; i < 4; i++ )
   {
     pUid->MsbUid = (pUid->MsbUid << 8) | reg_value[7 - i];
   }
-  
   pUid->LsbUid = 0;
   
   for( i = 0; i < 4; i++ )

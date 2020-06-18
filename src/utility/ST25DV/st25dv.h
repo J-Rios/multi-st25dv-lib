@@ -381,6 +381,14 @@ extern ST25DV_Drv_t St25Dv_Drv;
 /* Imported functions ------------------------------------------------------- */
 
 /* Exported functions ------------------------------------------------------- */
+int32_t ST25DV_Init( ST25DV_Object_t* );
+int32_t ST25DV_ReadID(ST25DV_Object_t* pObj,  uint8_t * const pICRef );
+int32_t ST25DV_IsDeviceReady(ST25DV_Object_t* pObj,  const uint32_t Trials );
+int32_t ST25DV_GetGPOStatus(ST25DV_Object_t* pObj,  uint16_t * const pGPOStatus );
+int32_t ST25DV_ConfigureGPO(ST25DV_Object_t* pObj,  const uint16_t ITConf );
+int32_t ST25DV_ReadData(ST25DV_Object_t* pObj,  uint8_t * const pData, const uint16_t TarAddr, const uint16_t NbByte );
+int32_t ST25DV_WriteData(ST25DV_Object_t* pObj,  const uint8_t * const pData, const uint16_t TarAddr, const uint16_t NbByte );
+
 int32_t ST25DV_ReadRegister( ST25DV_Object_t*, uint8_t * const, const uint16_t, const uint16_t );
 int32_t ST25DV_WriteRegister( ST25DV_Object_t*, const uint8_t * const, const uint16_t, const uint16_t );
 int32_t ST25DV_RegisterBusIO (ST25DV_Object_t* pObj, ST25DV_IO_t *pIO);
@@ -407,7 +415,6 @@ int32_t ST25DV_ReadEndZonex( ST25DV_Object_t* pObj, const ST25DV_END_ZONE EndZon
 int32_t ST25DV_WriteEndZonex( ST25DV_Object_t* pObj, const ST25DV_END_ZONE EndZone, const uint8_t EndZ );
 int32_t ST25DV_InitEndZone( ST25DV_Object_t* pObj );
 int32_t ST25DV_CreateUserZone( ST25DV_Object_t* pObj, uint16_t Zone1Length, uint16_t Zone2Length, uint16_t Zone3Length, uint16_t Zone4Length );
-int32_t ST25DV_ReadMemSize( ST25DV_Object_t* pObj, ST25DV_MEM_SIZE * const pSizeInfo );
 int32_t ST25DV_ReadEHMode( ST25DV_Object_t* pObj, ST25DV_EH_MODE_STATUS * const pEH_mode );
 int32_t ST25DV_WriteEHMode( ST25DV_Object_t* pObj, const ST25DV_EH_MODE_STATUS EH_mode );
 int32_t ST25DV_ReadRFMngt( ST25DV_Object_t* pObj, ST25DV_RF_MNGT * const pRF_Mngt );

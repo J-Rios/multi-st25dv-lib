@@ -338,6 +338,9 @@ typedef struct {
   void *handle;
 } ST25DV_Ctx_t;
 
+int32_t ST25DV_ReadReg (ST25DV_Ctx_t *ctx, uint16_t Reg, uint8_t* Data, uint16_t len);
+int32_t ST25DV_WriteReg (ST25DV_Ctx_t *ctx, uint16_t Reg, uint8_t const *Data, uint16_t len);
+
 int32_t ST25DV_GetICREF (ST25DV_Ctx_t *ctx, uint8_t *value);
 int32_t ST25DV_GetENDA1 (ST25DV_Ctx_t *ctx, uint8_t *value);
 int32_t ST25DV_SetENDA1 (ST25DV_Ctx_t *ctx, const uint8_t *value);
